@@ -72,7 +72,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Validate Telegram WebApp initData → returns user object or null
 function validateInitData(raw) {
   if (!raw) return null;
   const params = new URLSearchParams(raw);
@@ -99,7 +98,6 @@ function auth(req, res) {
   return user;
 }
 
-// GET /api/files — list user's files
 app.get('/api/files', (req, res) => {
   const user = auth(req, res); if (!user) return;
   const files = db.prepare(
@@ -108,14 +106,12 @@ app.get('/api/files', (req, res) => {
   res.json(files);
 });
 
-// DELETE /api/files/:id — remove a file
 app.delete('/api/files/:id', (req, res) => {
   const user = auth(req, res); if (!user) return;
   db.prepare('DELETE FROM files WHERE id = ? AND user_id = ?').run(req.params.id, String(user.id));
   res.json({ ok: true });
 });
 
-// GET /api/audio/:fileId — proxy audio from Telegram with CORS headers
 app.get('/api/audio/:fileId', async (req, res) => {
   const user = auth(req, res); if (!user) return;
 
@@ -129,7 +125,7 @@ app.get('/api/audio/:fileId', async (req, res) => {
 
     res.set('Content-Type',  upstream.headers.get('content-type') || 'audio/mpeg');
     res.set('Accept-Ranges', 'bytes');
-    res.set('Access-Control-Allow-Origin', APP_URL);
+    res.set('Access-Control-Allow-Origin', '*');
     const cl = upstream.headers.get('content-length');
     const cr = upstream.headers.get('content-range');
     if (cl) res.set('Content-Length', cl);
