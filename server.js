@@ -26,7 +26,13 @@ db.exec(`
 `);
 
 // ── Bot ─────────────────────────────────────────
-const bot = new TelegramBot(TOKEN, { polling: true });
+fetch(`https://api.telegram.org/bot${TOKEN}/deleteWebhook?drop_pending_updates=true`)
+  .catch(e => console.error('deleteWebhook error:', e.message));
+
+const bot = new TelegramBot(TOKEN, { polling: { interval: 2000, autoStart: true } });
+bot.on('polling_error', err => console.error('polling_error:', err.message));
+process.on('uncaughtException', err => console.error('uncaughtException:', err.message));
+process.on('unhandledRejection', err => console.error('unhandledRejection:', err));
 
 const AUDIO_MIME = new Set([
   'audio/mpeg','audio/mp4','audio/wav','audio/ogg',
