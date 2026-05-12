@@ -1,9 +1,9 @@
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const cors = require('cors');
-const Database = require('better-sqlite3');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const TOKEN   = process.env.BOT_TOKEN;
 const APP_URL = process.env.APP_URL;
@@ -12,18 +12,16 @@ const PORT    = process.env.PORT || 3000;
 if (!TOKEN)   throw new Error('BOT_TOKEN is required');
 if (!APP_URL) throw new Error('APP_URL is required');
 
-// ── DB ──────────────────────────────────────────
-const db = new Database('data.db');
-db.exec(`
-  CREATE TABLE IF NOT EXISTS files (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id    TEXT    NOT NULL,
-    file_id    TEXT    NOT NULL,
-    name       TEXT,
-    duration   INTEGER DEFAULT 0,
-    created_at INTEGER DEFAULT (unixepoch())
-  )
-`);
+// ── Storage (JSON file) ──────────────────────────
+const DB_PATH = '/tmp/choir_files.json';
+
+function loadDB() {
+  try { return JSON.parse(fs.readFileSync(DB_PATH, 'utf8')); }
+  catch { return {}; }
+}
+function saveDB(data) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(data), 'utf8');
+}
 
 // ── Bot ─────────────────────────────────────────
 const bot = new TelegramBot(TOKEN, { polling: true });
@@ -37,17 +35,15 @@ async function handleAudio(msg, audio) {
   const userId = String(msg.from.id);
   const name   = audio.file_name || audio.title || 'Аудио';
 
-  db.prepare(
-    'INSERT INTO files (user_id, file_id, name, duration) VALUES (?, ?, ?, ?)'
-  ).run(userId, audio.file_id, name, audio.duration || 0);
+  const db = loadDB();
+  if (!db[userId]) db[userId] = [];
+  db[userId].unshift({ id: Date.now(), file_id: audio.file_id, name, duration: audio.duration || 0 });
+  saveDB(db);
 
   await bot.sendMessage(userId, `✅ *${name}* добавлен в плеер`, {
     parse_mode: 'Markdown',
     reply_markup: {
-      inline_keyboard: [[{
-        text: '🎵 Открыть плеер',
-        web_app: { url: APP_URL },
-      }]],
+      inline_keyboard: [[{ text: '🎵 Открыть плеер', web_app: { url: APP_URL } }]],
     },
   });
 }
@@ -55,16 +51,12 @@ async function handleAudio(msg, audio) {
 bot.on('audio',    msg => handleAudio(msg, msg.audio));
 bot.on('document', msg => {
   const doc = msg.document;
-  if (doc.mime_type && AUDIO_MIME.has(doc.mime_type)) {
+  if (doc.mime_type && AUDIO_MIME.has(doc.mime_type))
     handleAudio(msg, { ...doc, title: doc.file_name });
-  }
 });
 bot.on('message', msg => {
   if (msg.audio || msg.document) return;
-  bot.sendMessage(
-    msg.chat.id,
-    'Привет! 🎶 Перешли или отправь аудио-файл — он появится в плеере.',
-  );
+  bot.sendMessage(msg.chat.id, 'Привет! 🎶 Перешли аудио-файл — он появится в плеере.');
 });
 
 // ── API ─────────────────────────────────────────
@@ -75,21 +67,14 @@ app.use(express.json());
 function validateInitData(raw) {
   if (!raw) return null;
   const params = new URLSearchParams(raw);
-  const hash   = params.get('hash');
+  const hash = params.get('hash');
   if (!hash) return null;
   params.delete('hash');
-
-  const checkStr = [...params.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n');
-
-  const secret  = crypto.createHmac('sha256', 'WebAppData').update(TOKEN).digest();
+  const checkStr = [...params.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => `${k}=${v}`).join('\n');
+  const secret = crypto.createHmac('sha256', 'WebAppData').update(TOKEN).digest();
   const computed = crypto.createHmac('sha256', secret).update(checkStr).digest('hex');
   if (computed !== hash) return null;
-
-  try { return JSON.parse(params.get('user')); }
-  catch { return null; }
+  try { return JSON.parse(params.get('user')); } catch { return null; }
 }
 
 function auth(req, res) {
@@ -100,37 +85,34 @@ function auth(req, res) {
 
 app.get('/api/files', (req, res) => {
   const user = auth(req, res); if (!user) return;
-  const files = db.prepare(
-    'SELECT id, file_id, name, duration FROM files WHERE user_id = ? ORDER BY created_at DESC'
-  ).all(String(user.id));
-  res.json(files);
+  const db = loadDB();
+  res.json(db[String(user.id)] || []);
 });
 
 app.delete('/api/files/:id', (req, res) => {
   const user = auth(req, res); if (!user) return;
-  db.prepare('DELETE FROM files WHERE id = ? AND user_id = ?').run(req.params.id, String(user.id));
+  const db = loadDB();
+  const uid = String(user.id);
+  if (db[uid]) db[uid] = db[uid].filter(f => String(f.id) !== req.params.id);
+  saveDB(db);
   res.json({ ok: true });
 });
 
 app.get('/api/audio/:fileId', async (req, res) => {
   const user = auth(req, res); if (!user) return;
-
   try {
-    const info   = await bot.getFile(req.params.fileId);
-    const tgUrl  = `https://api.telegram.org/file/bot${TOKEN}/${info.file_path}`;
+    const info = await bot.getFile(req.params.fileId);
+    const tgUrl = `https://api.telegram.org/file/bot${TOKEN}/${info.file_path}`;
     const headers = {};
     if (req.headers.range) headers['Range'] = req.headers.range;
-
     const upstream = await fetch(tgUrl, { headers });
-
-    res.set('Content-Type',  upstream.headers.get('content-type') || 'audio/mpeg');
+    res.set('Content-Type', upstream.headers.get('content-type') || 'audio/mpeg');
     res.set('Accept-Ranges', 'bytes');
     res.set('Access-Control-Allow-Origin', '*');
     const cl = upstream.headers.get('content-length');
     const cr = upstream.headers.get('content-range');
     if (cl) res.set('Content-Length', cl);
     if (cr) { res.set('Content-Range', cr); res.status(206); }
-
     upstream.body.pipe(res);
   } catch (err) {
     console.error('Audio proxy error:', err.message);
