@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -572,9 +573,20 @@ select.assign-select.matched { border-color: var(--good); color: var(--good); }
   .vol-slider { height: 32px; }
 }
 @media (max-width: 520px) {
-  .ctrl-grid { grid-template-columns: 1fr; }
+  .ctrl-grid { display: none; }
   .part-row { grid-template-columns: 90px 1fr 46px 34px 34px; }
   .header-part-chips { display: none; }
+  /* show voice selector prominently instead */
+  .mypart-mobile { display: flex !important; }
+}
+
+/* mobile voice selector strip (hidden on desktop) */
+.mypart-mobile {
+  display: none;
+  padding: 10px 14px 0;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 /* Telegram safe areas */
@@ -592,16 +604,19 @@ body {
 
   <div class="song-bar">
     <!-- webkitdirectory works in all browsers: Chrome, Firefox, Safari -->
-    <label class="btn-folder" title="Выбрать папку sheet_music (или папку одной песни)">
+    <label class="btn-folder" id="btnFolder" title="Выбрать папку sheet_music (или папку одной песни)">
       📂 Папка
       <input type="file" id="folderInput" webkitdirectory style="display:none"
         onchange="handleFolderInput(this)">
     </label>
-    <label class="btn-folder" title="Выбрать отдельные аудиофайлы — расставятся по именам">
+    <label class="btn-folder" id="btnFiles" title="Выбрать отдельные аудиофайлы — расставятся по именам">
       🎵 Файлы
       <input type="file" id="filesInput" multiple accept="audio/*" style="display:none"
         onchange="handleFilesInput(this)">
     </label>
+    <button class="btn-folder" id="btnBot" onclick="loadBotFiles()" style="display:none">
+      🤖 Из бота
+    </button>
     <select class="song-select" id="songSelect" disabled onchange="onSongChange(this)">
       <option value="">— выберите песню —</option>
     </select>
@@ -619,6 +634,12 @@ body {
 
   <!-- ══ MIXER COLUMN ══ -->
   <div class="mixer-col">
+
+    <!-- mobile-only voice selector -->
+    <div class="mypart-mobile">
+      <span class="mini-label">Моя партия:</span>
+      <div class="chips" id="partChipsMobile"></div>
+    </div>
 
     <div class="parts-scroll">
       <div class="panel-title">Голоса</div>
@@ -729,12 +750,12 @@ body {
 //  TELEGRAM MINI APP
 // ════════════════════════════════════════
 const tg = window.Telegram?.WebApp;
+const BACKEND_URL = 'https://choirapp-production.up.railway.app';
+
 if (tg) {
   tg.ready();
   tg.expand();
-  // Use Telegram's color scheme if available
-  const scheme = tg.colorScheme; // 'dark' | 'light'
-  if (scheme === 'light') {
+  if (tg.colorScheme === 'light') {
     document.documentElement.style.setProperty('--bg',      '#f5f0e8');
     document.documentElement.style.setProperty('--surface', '#ede8df');
     document.documentElement.style.setProperty('--surface2','#e5dfd6');
@@ -742,6 +763,127 @@ if (tg) {
     document.documentElement.style.setProperty('--text',    '#1a1612');
     document.documentElement.style.setProperty('--muted',   '#7a7068');
   }
+  // Show bot button only inside Telegram
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btnBot');
+    if (btn) btn.style.display = '';
+  });
+}
+
+// ── Загрузить файлы из бота ───────────────────
+async function loadBotFiles() {
+  if (!tg?.initData) { alert('Открой через Telegram'); return; }
+
+  const btn = document.getElementById('btnBot');
+  btn.textContent = '⏳';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/files`, {
+      headers: { 'X-Init-Data': tg.initData },
+    });
+    if (!res.ok) throw new Error(res.status);
+    const files = await res.json();
+
+    if (!files.length) {
+      alert('Нет файлов. Перешли аудио боту — оно появится здесь.');
+      return;
+    }
+
+    // Build a Map<partId, {name, fetchFn}> — same interface as loadFileMap but URL-based
+    await loadUrlFiles(files);
+  } catch (e) {
+    alert('Ошибка загрузки: ' + e.message);
+  } finally {
+    btn.textContent = '🤖 Из бота';
+    btn.disabled = false;
+  }
+}
+
+async function loadUrlFiles(fileList) {
+  if (S.playing) pauseAll();
+  PARTS.forEach(p => { ps[p.id].buffer = null; });
+  shiftedBufs.clear();
+  S.duration = 0; S.offset = 0;
+  updateProgressUI(0);
+
+  // Auto-match by filename, then show assign panel
+  const matched = new Map();
+  fileList.forEach(f => {
+    const part = findPartForFile(f.name);
+    if (part && !matched.has(part.id)) matched.set(part.id, f);
+  });
+
+  showAssignPanelUrl(matched, fileList);
+}
+
+// Assign panel variant for URL files
+let _pendingUrlFiles = [];
+
+function showAssignPanelUrl(matched, allFiles) {
+  _pendingUrlFiles = allFiles;
+  const preselect = new Map();
+  matched.forEach((f, partId) => preselect.set(f.name, partId));
+
+  const n = matched.size;
+  document.getElementById('assignHint').textContent =
+    n > 0 ? `${n} из ${allFiles.length} распознан(о) — проверь и подтверди` : 'не распознано — назначь вручную';
+
+  const list = document.getElementById('assignList');
+  list.innerHTML = '';
+
+  allFiles.forEach((f, i) => {
+    const prePartId = preselect.get(f.name) || '';
+    const isMatched = !!prePartId;
+    const opts = PARTS.map(p =>
+      `<option value="${p.id}"${p.id === prePartId ? ' selected' : ''}>${p.name}</option>`
+    ).join('');
+    const row = document.createElement('div');
+    row.className = 'assign-row';
+    row.innerHTML = `
+      <span class="assign-filename${isMatched ? ' ok' : ''}">${isMatched ? '✓ ' : ''}${f.name}</span>
+      <select class="assign-select${isMatched ? ' matched' : ''}" data-idx="${i}" data-source="url">
+        <option value="">— пропустить —</option>${opts}
+      </select>`;
+    list.appendChild(row);
+  });
+
+  document.getElementById('assignPanel').style.display = 'flex';
+  document.getElementById('notice').style.display = 'none';
+}
+
+async function applyAssignmentsUrl() {
+  const urlMap = new Map(); // partId → file metadata
+  document.querySelectorAll('#assignList select.assign-select[data-source="url"]').forEach(sel => {
+    const idx    = +sel.dataset.idx;
+    const partId = sel.value;
+    if (partId && _pendingUrlFiles[idx]) urlMap.set(partId, _pendingUrlFiles[idx]);
+  });
+
+  document.getElementById('assignPanel').style.display = 'none';
+  buildUI();
+
+  await Promise.all([...urlMap.entries()].map(async ([partId, f]) => {
+    try {
+      const audioRes = await fetch(`${BACKEND_URL}/api/audio/${f.file_id}`, {
+        headers: { 'X-Init-Data': tg.initData },
+      });
+      const ab  = await audioRes.arrayBuffer();
+      const buf = await aCtx.decodeAudioData(ab);
+      ps[partId].buffer = buf;
+      S.duration = Math.max(S.duration, buf.duration);
+    } catch (e) {
+      console.warn('Ошибка загрузки', f.name, e);
+    }
+  }));
+
+  document.getElementById('totTime').textContent = fmt(S.duration);
+  if (S.loopEnd === 0 || S.loopEnd > S.duration) {
+    S.loopEnd = S.duration;
+    const lEnd = document.getElementById('lEnd');
+    if (lEnd) lEnd.value = fmt(S.duration);
+  }
+  buildUI();
 }
 
 // ════════════════════════════════════════
@@ -951,6 +1093,10 @@ function showAssignPanel(matched, allFiles) {
 }
 
 async function applyAssignments() {
+  // Route to URL handler if files came from the bot
+  const firstSel = document.querySelector('#assignList select.assign-select[data-source="url"]');
+  if (firstSel) { applyAssignmentsUrl(); return; }
+
   const fileMap = new Map();
   document.querySelectorAll('#assignList select.assign-select').forEach(sel => {
     const idx = +sel.dataset.idx;
@@ -1031,12 +1177,15 @@ function buildUI() {
     `;
     list.appendChild(row);
 
-    // Chip
-    const chip = document.createElement('button');
-    chip.className = `chip ${isMine ? 'on' : ''}`;
-    chip.textContent = p.name;
-    chip.onclick = () => setMyPart(p.id);
-    chips.appendChild(chip);
+    // Chip (desktop + mobile)
+    [document.getElementById('partChips'), document.getElementById('partChipsMobile')].forEach(container => {
+      if (!container) return;
+      const chip = document.createElement('button');
+      chip.className = `chip ${isMine ? 'on' : ''}`;
+      chip.textContent = p.name;
+      chip.onclick = () => setMyPart(p.id);
+      container.appendChild(chip);
+    });
   });
 
   buildWave();
