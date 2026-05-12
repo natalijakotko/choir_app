@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Партитура</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@300;400;500&display=swap');
+
+:root {
+  --bg: #0d0d0d;
+  --surface: #181818;
+  --surface2: #202020;
+  --border: #363636;
+  --text: #f2ede2;
+  --muted: #9a9088;
+  --accent: #e8c47c;
+  --accent-dim: #9a7844;
+  --danger: #e07878;
+  --good: #72cc82;
+  --warn: #e8d070;
+  --solo: #70c4dc;
+  --ref-line: #5ab4d0;
+  --mic-line: #e8c47c;
+  --soprano1: #f0d0a8;
+  --soprano2: #e0b880;
+  --mezzo: #c89e68;
+  --alto: #b08858;
+  --tenor: #8ecce0;
+  --baritone: #6aaec4;
+  --bass: #4a90a8;
+  --piano: #a0a8c0;
+  --click: #b89060;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── HEADER ─── */
+.header {
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.header h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.song-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-folder {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-folder:hover { border-color: var(--accent-dim); color: var(--accent); }
+
+select.song-select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 6px 10px;
+  outline: none;
+  cursor: pointer;
+  min-width: 160px;
+  max-width: 280px;
+  flex: 1;
+}
+select.song-select:focus { border-color: var(--accent-dim); }
+select.song-select:disabled { opacity: 0.4; cursor: default; }
+
+.folder-tag {
+  font-size: 9px;
+  color: var(--accent-dim);
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+/* my part chips in header */
+.header-part-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mini-label {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.chip:hover { border-color: var(--accent-dim); color: var(--text); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+
+/* ─── MAIN LAYOUT ─── */
+.app {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ─── MIXER COLUMN ─── */
+.mixer-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+}
+
+.parts-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 24px;
+}
+
+.panel-title {
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+/* Part row: name | volume | file | S | M */
+.part-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 48px 26px 26px;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+.part-row:first-of-type { border-top: 1px solid var(--border); }
+
+.part-label { display: flex; align-items: center; gap: 7px; overflow: hidden; }
+.part-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.part-name { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.part-name.mine { color: var(--accent); }
+.my-badge { font-size: 8px; color: var(--accent-dim); letter-spacing: 1px; }
+
+.vol-wrap { display: flex; align-items: center; gap: 6px; }
+.vol-val { display: none; }
+
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+input[type=range].dim::-webkit-slider-thumb { background: var(--muted); }
+
+.upload-zone {
+  border: 1px dashed var(--border);
+  padding: 5px 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 8px;
+  color: var(--muted);
+  text-align: center;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.upload-zone:hover { border-color: var(--accent-dim); color: var(--accent); }
+.upload-zone.loaded { border-style: solid; border-color: var(--accent-dim); color: var(--accent); }
+.upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.btn-sm {
+  width: 26px; height: 24px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.btn-sm:hover { border-color: var(--accent-dim); color: var(--text); }
+.btn-sm.muted-on { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn-sm.solo-on  { background: var(--solo);   border-color: var(--solo);   color: var(--bg); }
+
+.notice {
+  border: 1px dashed var(--border);
+  padding: 14px 16px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.9;
+  margin-top: 16px;
+}
+.notice strong { color: var(--accent); font-weight: 400; }
+
+/* ─── TRANSPORT ─── */
+.transport {
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.progress-bar {
+  height: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+}
+.progress-fill {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  background: rgba(200,169,110,0.15);
+  pointer-events: none;
+}
+.progress-bars-wrap {
+  display: flex; align-items: center; height: 100%;
+  gap: 1px; padding: 0 4px;
+}
+.pbar { flex: 1; background: var(--accent-dim); border-radius: 1px; opacity: 0.6; }
+.time-row {
+  display: flex; justify-content: space-between;
+  font-size: 9px; color: var(--muted); margin-top: 3px;
+}
+
+.controls-row { display: flex; gap: 7px; align-items: center; }
+.btn-play {
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 2px solid var(--accent); background: none; color: var(--accent);
+  font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; flex-shrink: 0;
+}
+.btn-play:hover, .btn-play.playing { background: var(--accent); color: var(--bg); }
+.btn-ic {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--border); background: none; color: var(--muted);
+  font-size: 11px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.btn-ic:hover { border-color: var(--accent-dim); color: var(--accent); }
+.btn-ic.on { border-color: var(--accent); color: var(--accent); }
+
+/* 3-column grid for loop / speed / transpose */
+.ctrl-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+}
+
+/* Loop */
+.ctrl-block { display: flex; flex-direction: column; gap: 6px; }
+.ctrl-head { display: flex; justify-content: space-between; align-items: center; }
+.ctrl-val {
+  font-family: 'Playfair Display', serif;
+  font-size: 16px;
+  color: var(--accent);
+}
+
+.toggle-sw {
+  width: 30px; height: 16px; background: var(--border);
+  border-radius: 8px; position: relative; cursor: pointer; border: none; transition: background 0.2s;
+}
+.toggle-sw::after {
+  content: ''; position: absolute;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--muted); top: 3px; left: 3px; transition: all 0.2s;
+}
+.toggle-sw.on { background: var(--accent-dim); }
+.toggle-sw.on::after { left: 17px; background: var(--accent); }
+
+.loop-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.li-wrap { display: flex; flex-direction: column; gap: 2px; }
+.li-wrap label { font-size: 8px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+.li-wrap input {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-family: 'DM Mono', monospace;
+  font-size: 10px; padding: 4px 6px; outline: none;
+  transition: border-color 0.2s; width: 100%;
+}
+.li-wrap input:focus { border-color: var(--accent-dim); }
+
+.btn-text {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  font-family: 'DM Mono', monospace; font-size: 8px; padding: 4px 6px;
+  cursor: pointer; letter-spacing: 0.5px; transition: all 0.2s; text-transform: uppercase; width: 100%;
+}
+.btn-text:hover { border-color: var(--accent-dim); color: var(--accent); }
+
+/* Transpose */
+.tp-btns { display: flex; gap: 3px; }
+.btn-tp {
+  flex: 1; padding: 4px 0; background: none;
+  border: 1px solid var(--border); color: var(--muted);
+  font-family: 'DM Mono', monospace; font-size: 8px; cursor: pointer;
+  transition: all 0.15s; text-align: center;
+}
+.btn-tp:hover { border-color: var(--accent-dim); color: var(--accent); }
+.btn-tp.zero { border-color: var(--accent-dim); color: var(--accent); }
+.tp-note { font-size: 8px; color: var(--muted); margin-top: 2px; }
+
+/* ─── SRS COLUMN ─── */
+.srs-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+}
+.srs-head {
+  flex-shrink: 0;
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.srs-title {
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.srs-due-badge {
+  font-size: 9px;
+  padding: 2px 7px;
+  background: var(--accent);
+  color: var(--bg);
+  display: none;
+}
+.srs-due-badge.visible { display: inline-block; }
+.srs-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+.srs-empty {
+  padding: 40px 24px;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.8;
+  text-align: center;
+}
+
+/* card */
+.srs-card {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.srs-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.srs-card-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.srs-card.future .srs-card-text { color: var(--muted); font-size: 12px; }
+.srs-card.done   .srs-card-text { color: rgba(154,144,136,0.5); font-size: 12px; }
+.srs-card-meta {
+  font-size: 9px;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+.srs-card.due .srs-card-meta { color: var(--accent); }
+.srs-card.overdue .srs-card-meta { color: var(--danger); }
+.srs-card-del {
+  background: none;
+  border: none;
+  color: var(--border);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.srs-card-del:hover { color: var(--danger); }
+
+/* rating row */
+.srs-rate {
+  display: flex;
+  gap: 6px;
+}
+.srs-btn {
+  flex: 1;
+  padding: 6px 4px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: all 0.15s;
+  text-align: center;
+}
+.srs-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+.srs-btn.r1:hover { border-color: var(--danger); color: var(--danger); }
+.srs-btn.r4:hover { border-color: var(--good);   color: var(--good); }
+
+/* add row */
+.srs-add {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  gap: 8px;
+}
+.srs-add input {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 6px 10px;
+  outline: none;
+}
+.srs-add input::placeholder { color: var(--muted); }
+.srs-add input:focus { border-color: var(--accent-dim); }
+.srs-add-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 16px;
+  width: 34px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.srs-add-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+
+/* ─── ASSIGN PANEL ─── */
+.assign-panel {
+  background: var(--surface);
+  border: 1px solid var(--accent-dim);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.assign-panel-title {
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.assign-row {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.assign-row:last-of-type { border-bottom: none; }
+.assign-filename {
+  font-size: 10px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.assign-filename.ok { color: var(--good); }
+select.assign-select {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); font-family: 'DM Mono', monospace; font-size: 10px;
+  padding: 4px 6px; outline: none; cursor: pointer; width: 100%;
+}
+select.assign-select:focus { border-color: var(--accent-dim); }
+select.assign-select.matched { border-color: var(--good); color: var(--good); }
+.assign-actions { display: flex; gap: 8px; }
+.btn-assign {
+  flex: 1; padding: 7px 0;
+  background: var(--accent); border: none; color: var(--bg);
+  font-family: 'DM Mono', monospace; font-size: 10px;
+  cursor: pointer; letter-spacing: 0.5px; text-transform: uppercase;
+  transition: opacity 0.15s;
+}
+.btn-assign:hover { opacity: 0.85; }
+.btn-assign.secondary {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+}
+.btn-assign.secondary:hover { border-color: var(--muted); color: var(--text); }
+
+/* ─── RESPONSIVE / TELEGRAM MINI APP ─── */
+@media (max-width: 720px) {
+  html, body { overflow: auto; height: auto; }
+  .mixer-col { min-height: 0; }
+  .parts-scroll { overflow: visible; }
+  .ctrl-grid { grid-template-columns: 1fr 1fr; }
+  .header { gap: 8px; padding: 10px 14px; }
+  .header h1 { font-size: 18px; }
+  .parts-scroll { padding: 10px 14px; }
+  .transport { padding: 10px 14px 12px; }
+  .btn-folder { padding: 8px 12px; font-size: 11px; }
+  .btn-play { width: 48px; height: 48px; font-size: 18px; }
+  .btn-ic { width: 40px; height: 40px; font-size: 14px; }
+  .part-row { grid-template-columns: 100px 1fr 50px 32px 32px; }
+  .vol-slider { height: 32px; }
+}
+@media (max-width: 520px) {
+  .ctrl-grid { grid-template-columns: 1fr; }
+  .part-row { grid-template-columns: 90px 1fr 46px 34px 34px; }
+  .header-part-chips { display: none; }
+}
+
+/* Telegram safe areas */
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+</style>
+</head>
+<body>
+
+<!-- ─── HEADER ─── -->
+<header class="header">
+  <h1>Партитура</h1>
+
+  <div class="song-bar">
+    <!-- webkitdirectory works in all browsers: Chrome, Firefox, Safari -->
+    <label class="btn-folder" title="Выбрать папку sheet_music (или папку одной песни)">
+      📂 Папка
+      <input type="file" id="folderInput" webkitdirectory style="display:none"
+        onchange="handleFolderInput(this)">
+    </label>
+    <label class="btn-folder" title="Выбрать отдельные аудиофайлы — расставятся по именам">
+      🎵 Файлы
+      <input type="file" id="filesInput" multiple accept="audio/*" style="display:none"
+        onchange="handleFilesInput(this)">
+    </label>
+    <select class="song-select" id="songSelect" disabled onchange="onSongChange(this)">
+      <option value="">— выберите песню —</option>
+    </select>
+    <span class="folder-tag" id="folderTag"></span>
+  </div>
+
+  <div class="header-part-chips">
+    <span class="mini-label">Моя партия:</span>
+    <div class="chips" id="partChips"></div>
+  </div>
+</header>
+
+<!-- ─── MAIN ─── -->
+<main class="app">
+
+  <!-- ══ MIXER COLUMN ══ -->
+  <div class="mixer-col">
+
+    <div class="parts-scroll">
+      <div class="panel-title">Голоса</div>
+
+      <!-- Панель ручного назначения (появляется когда файлы не распознаны) -->
+      <div class="assign-panel" id="assignPanel" style="display:none">
+        <div class="assign-panel-title">
+          <span>Назначьте партии файлам</span>
+          <span id="assignHint" style="font-size:8px;color:var(--muted);letter-spacing:1px;text-transform:none"></span>
+        </div>
+        <div id="assignList"></div>
+        <div class="assign-actions">
+          <button class="btn-assign" onclick="applyAssignments()">Загрузить</button>
+          <button class="btn-assign secondary" onclick="document.getElementById('assignPanel').style.display='none'">Отмена</button>
+        </div>
+      </div>
+
+      <div id="partsList"></div>
+      <div class="notice" id="notice">
+        <strong>Как начать:</strong><br>
+        1. <strong>📂 Папка</strong> — выбрать папку sheet_music или папку одной песни<br>
+        2. <strong>🎵 Файлы</strong> — выбрать несколько mp3 сразу<br>
+        Файлы расставятся по партиям автоматически. Если имена не совпадут — назначите вручную.<br>
+        <strong>S</strong> = соло &nbsp;·&nbsp; <strong>M</strong> = заглушить
+      </div>
+    </div>
+
+    <!-- Transport -->
+    <div class="transport">
+
+      <!-- Progress -->
+      <div>
+        <div class="progress-bar" id="progBar" onclick="seekTo(event)">
+          <div class="progress-bars-wrap" id="waveBars"></div>
+          <div class="progress-fill" id="progFill" style="width:0%"></div>
+        </div>
+        <div class="time-row">
+          <span id="curTime">0:00</span>
+          <span id="totTime">0:00</span>
+        </div>
+        <div class="controls-row" style="margin-top:8px;">
+          <button class="btn-ic" onclick="skip(-5)" title="-5 сек">⟨⟨</button>
+          <button class="btn-play" id="playBtn" onclick="togglePlay()">▶</button>
+          <button class="btn-ic" onclick="skip(5)" title="+5 сек">⟩⟩</button>
+          <button class="btn-ic" id="loopBtn" onclick="toggleLoop()" title="Петля">⟳</button>
+        </div>
+      </div>
+
+      <!-- Loop / Speed / Transpose -->
+      <div class="ctrl-grid">
+
+        <!-- Loop -->
+        <div class="ctrl-block">
+          <div class="ctrl-head">
+            <span class="mini-label">Петля</span>
+            <button class="toggle-sw" id="loopSw" onclick="toggleLoop()"></button>
+          </div>
+          <div class="loop-inputs">
+            <div class="li-wrap">
+              <label>Начало</label>
+              <input type="text" id="lStart" value="0:00" onchange="updateLoop()">
+            </div>
+            <div class="li-wrap">
+              <label>Конец</label>
+              <input type="text" id="lEnd" value="0:00" onchange="updateLoop()">
+            </div>
+          </div>
+          <button class="btn-text" onclick="setLoopHere()">← отсюда</button>
+        </div>
+
+        <!-- Speed -->
+        <div class="ctrl-block">
+          <div class="ctrl-head">
+            <span class="mini-label">Темп</span>
+            <span class="ctrl-val" id="speedVal">100%</span>
+          </div>
+          <input type="range" min="50" max="120" value="100"
+            oninput="setSpeed(this.value)" style="width:100%;margin-bottom:3px;">
+          <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--muted);">
+            <span>50%</span><span>100%</span><span>120%</span>
+          </div>
+        </div>
+
+        <!-- Transpose -->
+        <div class="ctrl-block">
+          <div class="ctrl-head">
+            <span class="mini-label">Транспозиция</span>
+            <span class="ctrl-val" id="transVal">±0</span>
+          </div>
+          <div class="tp-btns">
+            <button class="btn-tp" onclick="doTranspose(-12)" title="Октава вниз">−8va</button>
+            <button class="btn-tp" onclick="doTranspose(-1)">−1</button>
+            <button class="btn-tp zero" id="transReset" onclick="doTranspose(0,true)">0</button>
+            <button class="btn-tp" onclick="doTranspose(1)">+1</button>
+            <button class="btn-tp" onclick="doTranspose(12)" title="Октава вверх">+8va</button>
+          </div>
+          <div class="tp-note">пт = полутон · темп не меняется</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ════════════════════════════════════════
+//  TELEGRAM MINI APP
+// ════════════════════════════════════════
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  // Use Telegram's color scheme if available
+  const scheme = tg.colorScheme; // 'dark' | 'light'
+  if (scheme === 'light') {
+    document.documentElement.style.setProperty('--bg',      '#f5f0e8');
+    document.documentElement.style.setProperty('--surface', '#ede8df');
+    document.documentElement.style.setProperty('--surface2','#e5dfd6');
+    document.documentElement.style.setProperty('--border',  '#c8c0b4');
+    document.documentElement.style.setProperty('--text',    '#1a1612');
+    document.documentElement.style.setProperty('--muted',   '#7a7068');
+  }
+}
+
+// ════════════════════════════════════════
+//  PARTS
+// ════════════════════════════════════════
+const PARTS = [
+  { id:'soprano1', name:'Soprano I',  color:'var(--soprano1)',
+    aliases:['soprano_1','sopr1','sop1','si','s1','sopr','sop','soprano','сопрано1','сопр1','сопр_1','сопрано_1','сопрано'] },
+  { id:'soprano2', name:'Soprano II', color:'var(--soprano2)',
+    aliases:['soprano_2','sopr2','sop2','sii','s2','сопрано2','сопр2','сопр_2','сопрано_2'] },
+  { id:'mezzo',    name:'Mezzo',      color:'var(--mezzo)',
+    aliases:['mez','ms','mezzosoprano','меццо','мез','меццосопрано'] },
+  { id:'alto',     name:'Alto',       color:'var(--alto)',
+    aliases:['alt','al','contralto','альт','алт','контральто'] },
+  { id:'tenor',    name:'Tenor',      color:'var(--tenor)',
+    aliases:['ten','t','тенор','тен'] },
+  { id:'baritone', name:'Baritone',   color:'var(--baritone)',
+    aliases:['bari','bar','br','баритон','бар'] },
+  { id:'bass',     name:'Bass',       color:'var(--bass)',
+    aliases:['bas','b','бас'] },
+  { id:'piano',    name:'Piano',      color:'var(--piano)',
+    aliases:['pno','pf','pianoforte','keys','клавиши','фортепиано','пиано','рояль','пф'] },
+  { id:'click',    name:'Click',      color:'var(--click)',
+    aliases:['metronome','metro','met','beat','клик','метроном','кликтрек','ритм','rhythm'] },
+];
+
+const aCtx = new (window.AudioContext || window.webkitAudioContext)();
+const ps = {};
+PARTS.forEach(p => {
+  const g = aCtx.createGain();
+  g.connect(aCtx.destination);
+  ps[p.id] = { buffer: null, source: null, gain: g, vol: 1.0, muted: false };
+});
+
+
+const S = {
+  myPart:    null,
+  soloSet:   new Set(),
+  playing:   false,
+  loopOn:    false,
+  loopStart: 0,
+  loopEnd:   0,
+  speed:     1.0,
+  transpose: 0,    // semitones
+  duration:  0,
+  offset:    0,
+  startedAt: 0,
+};
+
+// ════════════════════════════════════════
+//  FOLDER + SONG LOADING
+// ════════════════════════════════════════
+
+// song name → File[]
+const songFileMap = {};
+
+const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|flac|aac)$/i;
+
+function normalizeFileStem(raw) {
+  return raw.toLowerCase().replace(/[\s\-_]/g, '');
+}
+
+function stemFromFilename(filename) {
+  return normalizeFileStem(filename.replace(AUDIO_EXT, ''));
+}
+
+function findPartForFile(filename) {
+  const stem = stemFromFilename(filename);
+
+  // 1. Exact full-stem match ("soprano1.mp3")
+  let match = PARTS.find(p =>
+    p.id === stem ||
+    (p.aliases || []).map(a => normalizeFileStem(a)).includes(stem)
+  );
+  if (match) return match;
+
+  // 2. Word-by-word match ("mas que nada sopr+.mp3")
+  const words = filename.replace(AUDIO_EXT, '').toLowerCase()
+    .split(/[\s\-_.+,()[\]]+/)
+    .filter(w => w.length >= 2);
+
+  for (const word of words) {
+    match = PARTS.find(p =>
+      p.id === word ||
+      (p.aliases || []).map(a => a.toLowerCase()).includes(word)
+    );
+    if (match) return match;
+  }
+
+  return undefined;
+}
+
+// ── 📂 Папка (webkitdirectory — работает в Chrome / Firefox / Safari) ──
+function handleFolderInput(inp) {
+  const all = Array.from(inp.files).filter(f => AUDIO_EXT.test(f.name));
+  inp.value = '';
+  if (!all.length) { alert('В папке нет аудиофайлов'); return; }
+
+  const maxDepth = Math.max(...all.map(f => f.webkitRelativePath.split('/').length));
+  for (const k of Object.keys(songFileMap)) delete songFileMap[k];
+
+  if (maxDepth >= 3) {
+    // Multiple songs — group by second path component
+    all.forEach(f => {
+      const segs = f.webkitRelativePath.split('/');
+      if (segs.length < 3) return;
+      const song = segs[1];
+      if (!songFileMap[song]) songFileMap[song] = [];
+      songFileMap[song].push(f);
+    });
+    const rootName = all[0].webkitRelativePath.split('/')[0];
+    document.getElementById('folderTag').textContent = '📁 ' + rootName;
+    // Auto-select first song so the panel appears immediately
+    const firstSong = Object.keys(songFileMap).sort((a, b) => a.localeCompare(b, 'ru'))[0];
+    populateSongSelect(firstSong);
+    if (firstSong) processFileSet(songFileMap[firstSong]);
+  } else {
+    // Single song folder
+    const songName = all[0].webkitRelativePath.split('/')[0];
+    songFileMap[songName] = all;
+    document.getElementById('folderTag').textContent = '📁 ' + songName;
+    populateSongSelect(songName);
+    processFileSet(all);
+  }
+}
+
+// ── 🎵 Файлы напрямую ──
+function handleFilesInput(inp) {
+  const files = Array.from(inp.files).filter(f => AUDIO_EXT.test(f.name));
+  inp.value = '';
+  if (!files.length) return;
+
+  const songName = '(загруженные файлы)';
+  for (const k of Object.keys(songFileMap)) delete songFileMap[k];
+  songFileMap[songName] = files;
+  document.getElementById('folderTag').textContent = `🎵 ${files.length} файл(ов)`;
+  populateSongSelect(songName);
+  processFileSet(files);
+}
+
+function populateSongSelect(autoSelect) {
+  const sel = document.getElementById('songSelect');
+  sel.innerHTML = '<option value="">— выберите песню —</option>';
+  Object.keys(songFileMap)
+    .sort((a, b) => a.localeCompare(b, 'ru'))
+    .forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      sel.appendChild(opt);
+    });
+  sel.disabled = false;
+  if (autoSelect) sel.value = autoSelect;
+}
+
+function onSongChange(sel) {
+  const name = sel.value;
+  if (!name || !songFileMap[name]) return;
+  processFileSet(songFileMap[name]);
+}
+
+// ── Разобрать набор файлов: авто-матч → всегда показать панель подтверждения ──
+function processFileSet(files) {
+  const matched = new Map();  // partId → File
+  files.forEach(f => {
+    const part = findPartForFile(f.name);
+    if (part && !matched.has(part.id)) matched.set(part.id, f);
+  });
+  showAssignPanel(matched, files);
+}
+
+// ── Панель назначения (все файлы, предположения уже выставлены) ──
+let _pendingFiles = [];
+
+function showAssignPanel(matched, allFiles) {
+  _pendingFiles = allFiles;
+
+  // Build filename → partId map for pre-selection
+  const preselect = new Map();
+  matched.forEach((file, partId) => preselect.set(file.name, partId));
+
+  const n = matched.size;
+  document.getElementById('assignHint').textContent =
+    n > 0 ? `${n} из ${allFiles.length} распознан(о) — проверь и подтверди` : 'не распознано — назначь вручную';
+
+  const list = document.getElementById('assignList');
+  list.innerHTML = '';
+
+  allFiles.forEach((f, i) => {
+    const prePartId = preselect.get(f.name) || '';
+    const isMatched = !!prePartId;
+    const opts = PARTS.map(p =>
+      `<option value="${p.id}"${p.id === prePartId ? ' selected' : ''}>${p.name}</option>`
+    ).join('');
+    const row = document.createElement('div');
+    row.className = 'assign-row';
+    row.innerHTML = `
+      <span class="assign-filename${isMatched ? ' ok' : ''}">${isMatched ? '✓ ' : ''}${f.name}</span>
+      <select class="assign-select${isMatched ? ' matched' : ''}" data-idx="${i}">
+        <option value="">— пропустить —</option>
+        ${opts}
+      </select>`;
+    list.appendChild(row);
+  });
+
+  document.getElementById('assignPanel').style.display = 'flex';
+  document.getElementById('notice').style.display = 'none';
+}
+
+async function applyAssignments() {
+  const fileMap = new Map();
+  document.querySelectorAll('#assignList select.assign-select').forEach(sel => {
+    const idx = +sel.dataset.idx;
+    const partId = sel.value;
+    if (partId && _pendingFiles[idx]) fileMap.set(partId, _pendingFiles[idx]);
+  });
+  document.getElementById('assignPanel').style.display = 'none';
+  await loadFileMap(fileMap);
+}
+
+// ── Загрузить Map<partId, File> в буферы ──
+async function loadFileMap(fileMap) {
+  if (S.playing) pauseAll();
+  PARTS.forEach(p => { ps[p.id].buffer = null; });
+  shiftedBufs.clear();
+  S.duration = 0; S.offset = 0;
+  updateProgressUI(0);
+  buildUI();
+
+  await Promise.all([...fileMap.entries()].map(([partId, file]) =>
+    file.arrayBuffer()
+      .then(ab => aCtx.decodeAudioData(ab))
+      .then(buf => {
+        ps[partId].buffer = buf;
+        S.duration = Math.max(S.duration, buf.duration);
+      })
+      .catch(e => console.warn('Ошибка декодирования', file.name, e))
+  ));
+
+  document.getElementById('totTime').textContent = fmt(S.duration);
+  if (S.loopEnd === 0 || S.loopEnd > S.duration) {
+    S.loopEnd = S.duration;
+    document.getElementById('lEnd').value = fmt(S.duration);
+  }
+  document.getElementById('notice').style.display = 'none';
+  buildUI();
+}
+
+// ════════════════════════════════════════
+//  UI
+// ════════════════════════════════════════
+function buildUI() {
+  const list   = document.getElementById('partsList');
+  const chips  = document.getElementById('partChips');
+  list.innerHTML = '';
+  chips.innerHTML = '';
+
+  PARTS.forEach(p => {
+    const st     = ps[p.id];
+    const isMine = S.myPart === p.id;
+    const isSolo = S.soloSet.has(p.id);
+    const isMuted = st.muted;
+    const dimVol  = isMuted || (S.soloSet.size > 0 && !isSolo);
+
+    // Part row
+    const row = document.createElement('div');
+    row.className = 'part-row';
+    row.innerHTML = `
+      <div class="part-label">
+        <div class="part-dot" style="background:${p.color}"></div>
+        <div>
+          <div class="part-name ${isMine ? 'mine' : ''}">${p.name}</div>
+          ${isMine ? '<div class="my-badge">моя</div>' : ''}
+        </div>
+      </div>
+      <div class="vol-wrap">
+        <input type="range" min="0" max="100" value="${Math.round(st.vol * 100)}"
+          class="${dimVol ? 'dim' : ''}"
+          oninput="setVol('${p.id}', this.value)">
+        <span class="vol-val" id="vv-${p.id}">${Math.round(st.vol * 100)}</span>
+      </div>
+      <div class="upload-zone ${st.buffer ? 'loaded' : ''}" id="uz-${p.id}">
+        <input type="file" accept="audio/*" onchange="loadFile('${p.id}', this)">
+        <span id="fn-${p.id}">${st.buffer ? '✓' : 'mp3'}</span>
+      </div>
+      <button class="btn-sm ${isSolo ? 'solo-on' : ''}" onclick="toggleSolo('${p.id}')" title="Соло">S</button>
+      <button class="btn-sm ${isMuted ? 'muted-on' : ''}" onclick="toggleMute('${p.id}')" title="Заглушить">M</button>
+    `;
+    list.appendChild(row);
+
+    // Chip
+    const chip = document.createElement('button');
+    chip.className = `chip ${isMine ? 'on' : ''}`;
+    chip.textContent = p.name;
+    chip.onclick = () => setMyPart(p.id);
+    chips.appendChild(chip);
+  });
+
+  buildWave();
+}
+buildUI();
+
+function buildWave() {
+  const w = document.getElementById('waveBars');
+  w.innerHTML = '';
+  for (let i = 0; i < 60; i++) {
+    const b = document.createElement('div');
+    b.className = 'pbar';
+    b.style.height = (18 + Math.random() * 64) + '%';
+    w.appendChild(b);
+  }
+}
+
+// ════════════════════════════════════════
+//  AUDIO CONTROL
+// ════════════════════════════════════════
+function loadFile(id, inp) {
+  const f = inp.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = e => {
+    aCtx.decodeAudioData(e.target.result, buf => {
+      ps[id].buffer = buf;
+      shiftedBufs.delete(id); // invalidate shifted cache for this part
+      S.duration = Math.max(S.duration, buf.duration);
+      document.getElementById(`uz-${id}`).classList.add('loaded');
+      document.getElementById(`fn-${id}`).textContent = '✓';
+      document.getElementById('notice').style.display = 'none';
+      document.getElementById('totTime').textContent = fmt(S.duration);
+      if (S.loopEnd === 0) {
+        S.loopEnd = S.duration;
+        document.getElementById('lEnd').value = fmt(S.duration);
+      }
+    });
+  };
+  r.readAsArrayBuffer(f);
+}
+
+function setVol(id, v) {
+  ps[id].vol = v / 100;
+  document.getElementById(`vv-${id}`).textContent = v;
+  applyGain(id);
+}
+
+function applyGain(id) {
+  const p = ps[id];
+  let g;
+  if (p.muted) {
+    g = 0;
+  } else if (S.soloSet.size > 0 && !S.soloSet.has(id)) {
+    g = 0;
+  } else {
+    g = p.vol;
+  }
+  p.gain.gain.setTargetAtTime(g, aCtx.currentTime, 0.01);
+}
+
+function toggleMute(id) {
+  ps[id].muted = !ps[id].muted;
+  applyGain(id);
+  buildUI();
+}
+
+function toggleSolo(id) {
+  if (S.soloSet.has(id)) S.soloSet.delete(id);
+  else S.soloSet.add(id);
+  PARTS.forEach(p => applyGain(p.id));
+  buildUI();
+}
+
+function setMyPart(id) {
+  const first = S.myPart === null;
+  if (first) {
+    PARTS.forEach(p => { ps[p.id].vol = p.id === id ? 1.0 : 0.25; });
+  } else {
+    if (S.myPart) ps[S.myPart].vol = 0.25;
+    ps[id].vol = 1.0;
+  }
+  S.myPart = id;
+  PARTS.forEach(p => applyGain(p.id));
+  buildUI();
+}
+
+// ════════════════════════════════════════
+//  PLAYBACK
+// ════════════════════════════════════════
+let raf;
+
+function togglePlay() {
+  if (aCtx.state === 'suspended') aCtx.resume();
+  if (!Object.values(ps).some(p => p.buffer)) {
+    alert('Загрузите хотя бы одну партию');
+    return;
+  }
+  S.playing ? pauseAll() : playAll(S.offset);
+}
+
+function playAll(off) {
+  stopAll(true);
+  S.offset = off || 0;
+  S.startedAt = aCtx.currentTime;
+  S.playing = true;
+  PARTS.forEach(p => {
+    const st = ps[p.id];
+    const buf = shiftedBufs.get(p.id) || st.buffer;
+    if (!buf) return;
+    const src = aCtx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = S.speed;
+    // no detune — pitch shift is baked into the buffer
+    src.connect(st.gain);
+    src.start(0, S.offset);
+    st.source = src;
+  });
+  const btn = document.getElementById('playBtn');
+  btn.classList.add('playing');
+  btn.textContent = '⏸';
+  tick();
+}
+
+function pauseAll() {
+  S.offset = pos();
+  stopAll(true);
+  S.playing = false;
+  const btn = document.getElementById('playBtn');
+  btn.classList.remove('playing');
+  btn.textContent = '▶';
+  cancelAnimationFrame(raf);
+}
+
+function stopAll(keep) {
+  PARTS.forEach(p => {
+    const src = ps[p.id].source;
+    if (src) {
+      try { src.stop(); } catch(e) {}
+      try { src.disconnect(); } catch(e) {} // remove from audio graph — prevents node accumulation
+      ps[p.id].source = null;
+    }
+  });
+  if (!keep) S.offset = 0;
+}
+
+function pos() {
+  if (!S.playing) return S.offset;
+  return S.offset + (aCtx.currentTime - S.startedAt) * S.speed;
+}
+
+function tick() {
+  const p = pos(), d = S.duration;
+  if (S.loopOn && p >= S.loopEnd && S.loopEnd > S.loopStart) {
+    playAll(S.loopStart); return;
+  }
+  if (p >= d && d > 0) {
+    pauseAll(); S.offset = 0; updateProgressUI(0); return;
+  }
+  updateProgressUI(p);
+  raf = requestAnimationFrame(tick);
+}
+
+function updateProgressUI(p) {
+  const d = S.duration || 1;
+  document.getElementById('progFill').style.width = Math.min(100, p / d * 100) + '%';
+  document.getElementById('curTime').textContent = fmt(p);
+  document.getElementById('totTime').textContent = fmt(S.duration);
+  srsUpdateBadge();
+}
+
+function seekTo(e) {
+  const r = e.currentTarget.getBoundingClientRect();
+  const p = ((e.clientX - r.left) / r.width) * S.duration;
+  S.offset = p;
+  if (S.playing) playAll(p); else updateProgressUI(p);
+}
+
+function skip(dt) {
+  const p = Math.max(0, Math.min(S.duration, pos() + dt));
+  S.offset = p;
+  if (S.playing) playAll(p); else updateProgressUI(p);
+}
+
+function toggleLoop() {
+  S.loopOn = !S.loopOn;
+  document.getElementById('loopSw').classList.toggle('on', S.loopOn);
+  document.getElementById('loopBtn').classList.toggle('on', S.loopOn);
+}
+
+function updateLoop() {
+  S.loopStart = parseT(document.getElementById('lStart').value);
+  S.loopEnd   = parseT(document.getElementById('lEnd').value);
+}
+
+function setLoopHere() {
+  const p = pos();
+  S.loopStart = p;
+  document.getElementById('lStart').value = fmt(p);
+  if (S.loopEnd <= S.loopStart) {
+    S.loopEnd = Math.min(S.duration, p + 10);
+    document.getElementById('lEnd').value = fmt(S.loopEnd);
+  }
+  if (!S.loopOn) toggleLoop();
+}
+
+function setSpeed(v) {
+  const savedPos = pos(); // save before changing rate
+  S.speed = v / 100;
+  document.getElementById('speedVal').textContent = v + '%';
+  if (S.playing) playAll(savedPos);
+}
+
+// ════════════════════════════════════════
+//  PITCH SHIFT (tempo-preserving grain synthesis)
+// ════════════════════════════════════════
+const shiftedBufs = new Map(); // partId → AudioBuffer with shifted pitch
+
+function grainPitchShift(data, ratio, grainSize) {
+  grainSize = grainSize || 2048;
+  const hop  = grainSize >> 2; // 75 % overlap
+  const N    = data.length;
+  const out  = new Float32Array(N);
+  const norm = new Float32Array(N);
+  const half = grainSize >> 1;
+  const TAU  = 6.283185307;
+
+  // Hann window
+  const win = new Float32Array(grainSize);
+  for (let i = 0; i < grainSize; i++) win[i] = 0.5 * (1 - Math.cos(TAU * i / grainSize));
+
+  for (let center = 0; center < N + hop; center += hop) {
+    for (let i = 0; i < grainSize; i++) {
+      const oi = center - half + i;
+      if (oi < 0 || oi >= N) continue;
+      // pitch-scale position within grain, read from same temporal center
+      const ri  = (i - half) * ratio + half;
+      const ii  = Math.floor(center - half + ri);
+      const fr  = ri - Math.floor(ri);
+      const s0  = (ii >= 0 && ii < N)     ? data[ii]   : 0;
+      const s1  = (ii + 1 >= 0 && ii + 1 < N) ? data[ii + 1] : 0;
+      const w   = win[i];
+      out[oi]  += (s0 + fr * (s1 - s0)) * w;
+      norm[oi] += w * w;
+    }
+  }
+  for (let i = 0; i < N; i++) if (norm[i] > 1e-6) out[i] /= norm[i];
+  return out;
+}
+
+async function buildShiftedBufs() {
+  shiftedBufs.clear();
+  if (S.transpose === 0) return;
+  const ratio = Math.pow(2, S.transpose / 12);
+  for (const p of PARTS) {
+    const orig = ps[p.id].buffer;
+    if (!orig) continue;
+    await new Promise(r => setTimeout(r, 0)); // yield so UI can update
+    const nb = aCtx.createBuffer(orig.numberOfChannels, orig.length, orig.sampleRate);
+    for (let ch = 0; ch < orig.numberOfChannels; ch++) {
+      nb.getChannelData(ch).set(grainPitchShift(orig.getChannelData(ch), ratio));
+    }
+    shiftedBufs.set(p.id, nb);
+  }
+}
+
+async function doTranspose(delta, reset) {
+  const savedPos  = pos();
+  const wasPlaying = S.playing;
+  if (wasPlaying) pauseAll();
+
+  if (reset) S.transpose = 0;
+  else S.transpose = Math.max(-24, Math.min(24, S.transpose + delta));
+
+  const v = S.transpose;
+  document.getElementById('transVal').textContent = '⏳';
+  document.getElementById('transReset').classList.toggle('zero', v === 0);
+
+  await buildShiftedBufs();
+
+  document.getElementById('transVal').textContent =
+    v === 0 ? '±0' : (v > 0 ? '+' : '') + v + ' пт';
+
+  S.offset = savedPos;
+  if (wasPlaying) playAll(savedPos);
+}
+
+// ════════════════════════════════════════
+//  TUNER
+// ════════════════════════════════════════
+// ════════════════════════════════════════
+//  SPACED REPETITION (SM-2)
+// ════════════════════════════════════════
+const SRS_KEY = 'choirSRS_v1';
+
+function srsLoad() {
+  try { return JSON.parse(localStorage.getItem(SRS_KEY)) || []; }
+  catch { return []; }
+}
+function srsSave(cards) {
+  localStorage.setItem(SRS_KEY, JSON.stringify(cards));
+}
+
+function srsToday() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+function srsDueLabel(card) {
+  const today = srsToday();
+  const due = card.due;
+  const diff = Math.round((due - today) / 86400000);
+  if (diff < 0)  return 'просрочено ' + Math.abs(diff) + ' д';
+  if (diff === 0) return 'сегодня';
+  if (diff === 1) return 'завтра';
+  return 'через ' + diff + ' д';
+}
+
+function srsCardState(card) {
+  const today = srsToday();
+  if (card.doneToday) return 'done';
+  if (card.due <= today) return card.due < today ? 'overdue' : 'due';
+  return 'future';
+}
+
+// SM-2 update
+function sm2(card, rating) {
+  // rating: 1=forgot, 2=hard, 3=ok, 4=easy
+  let { interval, ef } = card;
+  if (rating === 1) {
+    interval = 1;
+  } else {
+    if (rating === 2) ef = Math.max(1.3, ef - 0.15);
+    if (rating === 4) ef = Math.min(2.5, ef + 0.1);
+    interval = interval < 1 ? 1 : Math.round(interval === 1 ? 6 : interval * ef);
+  }
+  return { interval, ef };
+}
+
+function srsReview(id, rating) {
+  const cards = srsLoad();
+  const c = cards.find(x => x.id === id);
+  if (!c) return;
+  const { interval, ef } = sm2(c, rating);
+  c.interval = interval;
+  c.ef = ef;
+  c.due = srsToday() + interval * 86400000;
+  c.lastReviewed = Date.now();
+  c.doneToday = true;
+  srsSave(cards);
+  srsRender();
+}
+
+function srsAdd() {
+  const inp = document.getElementById('srsInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  const cards = srsLoad();
+  cards.unshift({ id: Date.now(), text, interval: 1, ef: 2.5, due: srsToday(), doneToday: false, lastReviewed: null });
+  srsSave(cards);
+  inp.value = '';
+  srsRender();
+}
+
+function srsDelete(id) {
+  const cards = srsLoad().filter(c => c.id !== id);
+  srsSave(cards);
+  srsRender();
+}
+
+function srsUpdateBadge() {
+  const today = srsToday();
+  const n = srsLoad().filter(c => !c.doneToday && c.due <= today).length;
+  const b = document.getElementById('srsBadge');
+  if (!b) return;
+  if (n > 0) { b.textContent = n; b.classList.add('visible'); }
+  else { b.textContent = ''; b.classList.remove('visible'); }
+}
+
+function srsRender() {
+  const list = document.getElementById('srsList');
+  if (!list) return;
+  const cards = srsLoad();
+  if (cards.length === 0) {
+    list.innerHTML = '<div class="srs-empty">Добавь первую карточку —<br>что нужно повторить на репетиции?</div>';
+    srsUpdateBadge();
+    return;
+  }
+  // Sort: overdue first, then due today, then future, then done today
+  const order = { overdue: 0, due: 1, future: 2, done: 3 };
+  const sorted = [...cards].sort((a, b) => {
+    const sa = order[srsCardState(a)], sb = order[srsCardState(b)];
+    if (sa !== sb) return sa - sb;
+    return a.due - b.due;
+  });
+  list.innerHTML = sorted.map(c => {
+    const state = srsCardState(c);
+    const label = srsDueLabel(c);
+    const rateRow = (state === 'due' || state === 'overdue') ? `
+      <div class="srs-rate">
+        <button class="srs-btn r1" onclick="srsReview(${c.id},1)">забыл</button>
+        <button class="srs-btn r2" onclick="srsReview(${c.id},2)">сложно</button>
+        <button class="srs-btn r3" onclick="srsReview(${c.id},3)">ок</button>
+        <button class="srs-btn r4" onclick="srsReview(${c.id},4)">легко</button>
+      </div>` : '';
+    return `<div class="srs-card ${state}">
+      <div class="srs-card-top">
+        <span class="srs-card-text">${c.text}</span>
+        <span class="srs-card-meta">${label}</span>
+        <button class="srs-card-del" onclick="srsDelete(${c.id})" title="Удалить">×</button>
+      </div>${rateRow}
+    </div>`;
+  }).join('');
+  srsUpdateBadge();
+}
+
+// Reset doneToday at midnight
+(function srsResetDailyFlag() {
+  const cards = srsLoad();
+  const today = srsToday();
+  let changed = false;
+  cards.forEach(c => {
+    if (c.doneToday && c.due > today) { c.doneToday = false; changed = true; }
+  });
+  if (changed) srsSave(cards);
+})();
+
+srsRender();
+
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement.tagName;
+  if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+});
+
+// ════════════════════════════════════════
+//  UTILS
+// ════════════════════════════════════════
+function fmt(s) {
+  if (!s || isNaN(s)) return '0:00';
+  return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+}
+function parseT(str) {
+  if (!str) return 0;
+  const p = str.split(':');
+  return p.length === 2 ? +p[0] * 60 + parseFloat(p[1]) : parseFloat(str) || 0;
+}
+</script>
+
+</body>
+</html>
