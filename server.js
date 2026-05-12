@@ -69,7 +69,7 @@ bot.on('message', msg => {
 
 // ── API ─────────────────────────────────────────
 const app = express();
-app.use(cors({ origin: APP_URL }));
+app.use(cors());
 app.use(express.json());
 
 // Validate Telegram WebApp initData → returns user object or null
